@@ -339,9 +339,9 @@ class _TileRevealScreenState extends State<TileRevealScreen>
         _tiles[i].targetPos = target;
         _tiles[i].isVisible = true;
       } else {
-        // Tile needs to exit
+        // Tile needs to exit - push further off screen to avoid edge visibility
         final exitTarget = Offset(
-          _random.nextBool() ? -1 : gridSize.toDouble(),
+          _random.nextBool() ? -2 : gridSize.toDouble() + 1,
           _tiles[i].currentPos.dy,
         );
         tileTargets[i] = exitTarget;
@@ -612,7 +612,7 @@ class _TileRevealScreenState extends State<TileRevealScreen>
       );
       
       final startPos = Offset(
-        _random.nextBool() ? -1 : gridSize.toDouble(),
+        _random.nextBool() ? -2 : gridSize.toDouble() + 1,
         targetPos.dy,
       );
       
