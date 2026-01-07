@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'features/attribution.dart';
+import 'features/onboarding.dart';
 
 void main() {
   runApp(const BibleTilesApp());
@@ -693,7 +694,7 @@ class _TileRevealScreenState extends State<TileRevealScreen>
 
   void _nextOnboardingPage() {
     setState(() {
-      if (_onboardingPage < 2) {
+      if (_onboardingPage < OnboardingOverlay.pageCount - 1) {
         _onboardingPage++;
       } else {
         _showingOnboarding = false;
@@ -788,74 +789,12 @@ class _TileRevealScreenState extends State<TileRevealScreen>
           ),
 
           // Onboarding overlay
-          if (_showingOnboarding) _buildOnboardingOverlay(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOnboardingOverlay() {
-    final pages = [
-      {
-        'title': 'welcome',
-        'body': 'a quiet space for\ncontemplation',
-      },
-      {
-        'title': 'navigate',
-        'body': 'tap anywhere for\nthe next verse\n\ntap ■ source to see\nwhere it\'s from',
-      },
-      {
-        'title': 'breathe',
-        'body': 'let each verse\nsettle before\nmoving on',
-      },
-    ];
-
-    final page = pages[_onboardingPage];
-
-    return GestureDetector(
-      onTap: _nextOnboardingPage,
-      child: Container(
-        color: const Color(0xFFFAF8F3).withOpacity(0.95),
-        child: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(48.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    page['title']!,
-                    style: GoogleFonts.jost(
-                      fontSize: 14,
-                      color: const Color(0xFFAAAAAA),
-                      letterSpacing: 2.0,
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  Text(
-                    page['body']!,
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.jost(
-                      fontSize: 20,
-                      height: 1.6,
-                      color: const Color(0xFF2C2C2C),
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                  const SizedBox(height: 48),
-                  Text(
-                    _onboardingPage < 2 ? 'tap to continue' : 'tap to begin',
-                    style: GoogleFonts.jost(
-                      fontSize: 12,
-                      color: const Color(0xFFAAAAAA),
-                      letterSpacing: 1.0,
-                    ),
-                  ),
-                ],
-              ),
+          if (_showingOnboarding)
+            OnboardingOverlay(
+              currentPage: _onboardingPage,
+              onTap: _nextOnboardingPage,
             ),
-          ),
-        ),
+        ],
       ),
     );
   }
