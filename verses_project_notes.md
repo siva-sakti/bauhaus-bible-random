@@ -20,7 +20,7 @@ A family of contemplative scripture apps, each with its own aesthetic identity m
   - Random (current) — done ✓
   - Flashcards — mark/save verses, hide/reveal, spaced repetition?
   - Contemplative reading — sequential, chapter structure, slower pace
-- [ ] **Details/context panel** — "+" icon opens scrollable page with commentary, context
+- [x] **Details/context panel** — "+" icon opens scrollable page with commentary, context ✓
 - [x] **Attribution** — flip card to reveal source (book/chapter/verse) ✓
 - [x] **Onboarding** — 3-page gentle overlay (welcome, navigate, breathe) ✓
 - [ ] **Dark mode toggle** — inverted cream/black
@@ -219,7 +219,18 @@ User taps → _transitionToNext()
 
 ## Session Log
 
-### January 6, 2026
+### January 6, 2026 (Session 2)
+- **"More" view feature**: Full text and commentary view
+  - Tap □ more button to reveal expanded content
+  - Tiles shrink to tiny bookends at top/bottom (12×12 grid)
+  - Scrollable content area with full text, source, commentary
+  - Gentle breathing animation on tiny tiles (3.5s cycle)
+  - Tap anywhere to exit back to normal view
+  - Icon dimmed when verse has no extra content
+  - Data structure updated: `anchor`, `full?`, `source`, `commentary?`
+  - 450ms transition with easeInOutCubic curve
+
+### January 6, 2026 (Session 1)
 - **Attribution feature**: 3D flip animation to reveal verse source
   - Tap ■ source button to flip, tap again to flip back
   - Separate from "next verse" tap (no accidental advances)

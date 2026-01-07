@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'features/verse.dart';
@@ -131,6 +132,14 @@ class _TileRevealScreenState extends State<TileRevealScreen>
   bool _showingOnboarding = false;
   int _onboardingPage = 0;
 
+  // More view state
+  bool _isMoreViewActive = false;
+  bool _isMoreTransitioning = false;
+  late AnimationController _moreTransitionController;
+  late AnimationController _breathingController;
+  late Animation<double> _tileShrinkAnimation;
+  late Animation<double> _breathingAnimation;
+
   @override
   void initState() {
     super.initState();
@@ -154,7 +163,33 @@ class _TileRevealScreenState extends State<TileRevealScreen>
       vsync: this,
     );
     _flipController.addListener(() => setState(() {}));
-    
+
+    // More view animation controllers
+    // 680ms = 600ms base + 80ms max stagger, so all tiles complete together
+    _moreTransitionController = AnimationController(
+      duration: const Duration(milliseconds: 680),
+      vsync: this,
+    );
+    _moreTransitionController.addListener(() => setState(() {}));
+
+    _breathingController = AnimationController(
+      duration: const Duration(milliseconds: 3500),
+      vsync: this,
+    );
+    _breathingController.addListener(() => setState(() {}));
+
+    _tileShrinkAnimation = CurvedAnimation(
+      parent: _moreTransitionController,
+      curve: Curves.easeInOutSine,  // Very gentle, smooth curve
+    );
+
+    _breathingAnimation = Tween<double>(begin: 0.97, end: 1.03).animate(
+      CurvedAnimation(
+        parent: _breathingController,
+        curve: Curves.easeInOut,
+      ),
+    );
+
     _masterController.addListener(_onAnimationUpdate);
     _masterController.addStatusListener(_onAnimationStatus);
     
@@ -587,7 +622,13 @@ class _TileRevealScreenState extends State<TileRevealScreen>
   bool _tilesStarted = false; // Track if we've started tile movement
   
   void _transitionToNext() {
-    if (_isTransitioning) return;
+    if (_isTransitioning || _isMoreTransitioning) return;
+
+    // Exit more view if active
+    if (_isMoreViewActive) {
+      _exitMoreView();
+      return;
+    }
 
     // Reset source view if showing
     if (_showingSource) {
@@ -680,11 +721,13 @@ class _TileRevealScreenState extends State<TileRevealScreen>
     _masterController.dispose();
     _quoteFadeOutController.dispose();
     _flipController.dispose();
+    _moreTransitionController.dispose();
+    _breathingController.dispose();
     super.dispose();
   }
 
   void _toggleSource() {
-    if (_isTransitioning) return;
+    if (_isTransitioning || _isMoreViewActive || _isMoreTransitioning) return;
 
     setState(() {
       _showingSource = !_showingSource;
@@ -721,6 +764,64 @@ class _TileRevealScreenState extends State<TileRevealScreen>
       _onboardingPage = 0;
     });
   }
+
+  // === More view functions ===
+
+  void _toggleMoreView() {
+    // Don't allow toggle if no extra content or during transitions
+    if (!verses[_currentQuote].hasMore) return;
+    if (_isTransitioning || _isMoreTransitioning) return;
+
+    if (_isMoreViewActive) {
+      _exitMoreView();
+    } else {
+      _enterMoreView();
+    }
+  }
+
+  void _enterMoreView() {
+    // Reset source view if showing
+    if (_showingSource) {
+      _showingSource = false;
+      _flipController.reset();
+    }
+
+    setState(() {
+      _isMoreTransitioning = true;
+      _isMoreViewActive = true;
+    });
+
+    // Start breathing animation
+    _breathingController.repeat(reverse: true);
+
+    _moreTransitionController.forward().then((_) {
+      setState(() {
+        _isMoreTransitioning = false;
+      });
+    });
+  }
+
+  void _exitMoreView() {
+    setState(() {
+      _isMoreTransitioning = true;
+      _isMoreViewActive = false;  // Set to false NOW so isExiting works
+    });
+
+    // Stop breathing animation
+    _breathingController.stop();
+
+    _moreTransitionController.reverse().then((_) {
+      setState(() {
+        _isMoreTransitioning = false;
+      });
+    });
+  }
+
+  // === Tiny tile helpers for "more" view ===
+
+  // Configuration for tiny tiles (bookends at top and bottom)
+  static const int _tinyGridSize = 16;  // More tiles = smaller with gaps
+  static const double _tinyTileGap = 0.4; // Gap between tiny tiles (0-1, portion of tile size)
 
   // === Smart verse/composition matching ===
 
@@ -762,7 +863,7 @@ class _TileRevealScreenState extends State<TileRevealScreen>
   // Returns: 0 = tiny, 1 = small, 2 = medium, 3 = large, 4 = extra large
   int _getVerseSize(Verse verse) {
     // Use auto-wrapped text to get accurate line count
-    final wrappedText = _autoWrapText(verse.text);
+    final wrappedText = _autoWrapText(verse.anchor);
     final lineCount = wrappedText.split('\n').length;
 
     if (lineCount <= 2) return 0;       // tiny
@@ -833,11 +934,18 @@ class _TileRevealScreenState extends State<TileRevealScreen>
     final verseSize = _getVerseSize(verses[newVerse]);
     final compatible = _getCompatibleCompositions(verseSize);
 
-    // Pick random compatible composition (different from current if possible)
+    // Pick random compatible composition (different from current AND target)
     int newComposition;
-    final compatibleExcludingCurrent = compatible.where((c) => c != _currentComposition).toList();
-    if (compatibleExcludingCurrent.isNotEmpty) {
-      newComposition = compatibleExcludingCurrent[_random.nextInt(compatibleExcludingCurrent.length)];
+    final excludeList = {_currentComposition, _targetComposition};
+    final compatibleExcludingRecent = compatible.where((c) => !excludeList.contains(c)).toList();
+    if (compatibleExcludingRecent.isNotEmpty) {
+      newComposition = compatibleExcludingRecent[_random.nextInt(compatibleExcludingRecent.length)];
+    } else if (compatible.length > 1) {
+      // At least pick different from current
+      final fallback = compatible.where((c) => c != _currentComposition).toList();
+      newComposition = fallback.isNotEmpty
+          ? fallback[_random.nextInt(fallback.length)]
+          : compatible[_random.nextInt(compatible.length)];
     } else {
       newComposition = compatible[_random.nextInt(compatible.length)];
     }
@@ -863,8 +971,8 @@ class _TileRevealScreenState extends State<TileRevealScreen>
     final angle = _flipController.value * math.pi;
     final isFrontVisible = angle < math.pi / 2;
 
-    // Auto-wrap text that doesn't have manual line breaks
-    final displayText = _autoWrapText(verses[_currentQuote].text);
+    // Auto-wrap anchor text that doesn't have manual line breaks
+    final displayText = _autoWrapText(verses[_currentQuote].anchor);
     final fontSize = _getFontSize(verses[_currentQuote]);
 
     return Transform(
@@ -906,7 +1014,7 @@ class _TileRevealScreenState extends State<TileRevealScreen>
         children: [
           // Main content
           GestureDetector(
-            onTap: _showingQuote && !_isTransitioning && !_showingOnboarding
+            onTap: _showingQuote && !_isTransitioning && !_showingOnboarding && !_isMoreViewActive && !_isMoreTransitioning
                 ? _transitionToNext
                 : null,
             behavior: HitTestBehavior.opaque,
@@ -957,83 +1065,563 @@ class _TileRevealScreenState extends State<TileRevealScreen>
         ? _clearings[_targetComposition]
         : _clearings[_currentComposition];
 
-    final tileSize = size / 6; // gridSize is 6
+    final normalTileSize = size / gridSize;
+    final tinyTileSize = size / _tinyGridSize;
 
-    final clearingLeft = clearing.left * tileSize;
-    final clearingTop = clearing.top * tileSize;
-    final clearingWidth = clearing.width * tileSize;
-    final clearingHeight = clearing.height * tileSize;
+    final clearingLeft = clearing.left * normalTileSize;
+    final clearingTop = clearing.top * normalTileSize;
+    final clearingWidth = clearing.width * normalTileSize;
+    final clearingHeight = clearing.height * normalTileSize;
 
-    return Stack(
-      clipBehavior: Clip.hardEdge,
-      children: [
-        // Quote/Source layer with 3D flip
-        if (_showingQuote)
-          Positioned(
-            left: clearingLeft,
-            top: clearingTop,
-            width: clearingWidth,
-            height: clearingHeight,
-            child: Opacity(
-              opacity: _quoteOpacity,
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: _buildFlipContent(),
+    final moreProgress = _tileShrinkAnimation.value;
+    final isEntering = _isMoreTransitioning && _isMoreViewActive;
+    final isExiting = _isMoreTransitioning && !_isMoreViewActive;
+    final isFullyInMoreView = _isMoreViewActive && !_isMoreTransitioning;
+
+    final breathingScale = isFullyInMoreView ? _breathingAnimation.value : 1.0;
+
+    // STATE 1: Normal view (no more view active)
+    if (!_isMoreViewActive && !_isMoreTransitioning) {
+      return Stack(
+        clipBehavior: Clip.hardEdge,
+        children: [
+          // Quote in clearing
+          if (_showingQuote)
+            Positioned(
+              left: clearingLeft,
+              top: clearingTop,
+              width: clearingWidth,
+              height: clearingHeight,
+              child: Opacity(
+                opacity: _quoteOpacity,
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: _buildFlipContent(),
+                  ),
                 ),
               ),
             ),
+          // Tiles on top
+          ..._buildNormalTiles(normalTileSize),
+        ],
+      );
+    }
+
+    // STATE 2: Entering more view
+    // Phase 1 (0-0.4): Tiles shrink + fade to 70%, anchor fades out
+    // Phase 2 (0.33-0.83): Tiles drift to bookend positions
+    // Phase 3 (0.67-1.0): Full text fades in
+    if (isEntering) {
+      // Phase 1: Anchor fade out (0 - 0.4)
+      final anchorOpacity = (1 - (moreProgress / 0.4)).clamp(0.0, 1.0);
+
+      // Phase 3: More content fade in (0.67 - 1.0)
+      final contentOpacity = ((moreProgress - 0.67) / 0.33).clamp(0.0, 1.0);
+
+      return Stack(
+        clipBehavior: Clip.hardEdge,
+        children: [
+          // More content fading in (behind tiles)
+          Opacity(
+            opacity: contentOpacity,
+            child: _buildMoreContent(),
           ),
 
-        // Tiles layer
-        ..._tiles.where((t) =>
-            t.currentPos.dx >= -0.5 && t.currentPos.dx < 6.5 &&
-            t.currentPos.dy >= -0.5 && t.currentPos.dy < 6.5
-        ).map((tile) {
-          return Positioned(
-            left: tile.currentPos.dx * tileSize - 0.5,
-            top: tile.currentPos.dy * tileSize - 0.5,
+          // Anchor text fading out
+          if (_showingQuote && anchorOpacity > 0)
+            Positioned(
+              left: clearingLeft,
+              top: clearingTop,
+              width: clearingWidth,
+              height: clearingHeight,
+              child: Opacity(
+                opacity: _quoteOpacity * anchorOpacity,
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: _buildFlipContent(),
+                  ),
+                ),
+              ),
+            ),
+
+          // Tiles: shrinking, fading, drifting to bookends
+          ..._buildEnteringTiles(normalTileSize, tinyTileSize, size, moreProgress),
+        ],
+      );
+    }
+
+    // STATE 3: Fully in more view
+    if (isFullyInMoreView) {
+      return Stack(
+        clipBehavior: Clip.hardEdge,
+        children: [
+          // More content
+          _buildMoreContent(),
+          // Bookends with breathing
+          ..._buildBookendTiles(size, tinyTileSize, 1.0, breathingScale),
+        ],
+      );
+    }
+
+    // STATE 4: Exiting more view
+    // Phase 1 (0-0.3): More text fades out
+    // Phase 2 (0.22-0.9): Tiles grow + drift back to composition
+    // Phase 3 (0.75-1.0): Anchor text fades in
+    if (isExiting) {
+      // moreProgress goes from 1.0 -> 0.0 during exit
+      final exitProgress = 1 - moreProgress; // 0.0 -> 1.0
+
+      // Phase 1: More content fade out (0 - 0.3)
+      final contentOpacity = (1 - (exitProgress / 0.3)).clamp(0.0, 1.0);
+
+      // Phase 3: Anchor fade in (0.75 - 1.0)
+      final anchorOpacity = ((exitProgress - 0.75) / 0.25).clamp(0.0, 1.0);
+
+      return Stack(
+        clipBehavior: Clip.hardEdge,
+        children: [
+          // More content fading out
+          if (contentOpacity > 0)
+            Opacity(
+              opacity: contentOpacity,
+              child: _buildMoreContent(),
+            ),
+
+          // Anchor text fading in
+          if (_showingQuote && anchorOpacity > 0)
+            Positioned(
+              left: clearingLeft,
+              top: clearingTop,
+              width: clearingWidth,
+              height: clearingHeight,
+              child: Opacity(
+                opacity: _quoteOpacity * anchorOpacity,
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: _buildFlipContent(),
+                  ),
+                ),
+              ),
+            ),
+
+          // Tiles: growing, drifting from bookends back to composition
+          ..._buildExitingTiles(normalTileSize, tinyTileSize, size, exitProgress),
+        ],
+      );
+    }
+
+    // Fallback (shouldn't reach here)
+    return const SizedBox();
+  }
+
+  // Helper: Build tiles entering more view (shrink + fade + drift to bookends)
+  // The big tiles BECOME the tiny tiles - continuous transformation
+  List<Widget> _buildEnteringTiles(double normalSize, double tinySize, double gridPixelSize, double progress) {
+    final tiles = _tiles.where((tile) =>
+        tile.currentPos.dx >= -0.5 && tile.currentPos.dx < 6.5 &&
+        tile.currentPos.dy >= -0.5 && tile.currentPos.dy < 6.5
+    ).toList();
+
+    if (tiles.isEmpty) return [];
+
+    // Target tile size in bookend (with gaps)
+    final gapSize = tinySize * _tinyTileGap;
+    final targetSize = tinySize - gapSize;
+
+    return tiles.asMap().entries.map((entry) {
+      final index = entry.key;
+      final tile = entry.value;
+
+      // Random stagger: 0-80ms = 0-0.118 normalized (with 680ms total)
+      // Use deterministic "random" based on tile id for consistency
+      final stagger = ((tile.id * 37) % 80) / 680.0;
+
+      // Adjust progress for this tile's stagger
+      final tileProgress = ((progress - stagger) / (1.0 - stagger)).clamp(0.0, 1.0);
+
+      // Apply easeOutCubic for size and position
+      final easedProgress = Curves.easeOutCubic.transform(tileProgress);
+
+      // Opacity dip: 1.0 → 0.5 (at 40%) → 0.85 (at end)
+      double currentOpacity;
+      if (tileProgress < 0.4) {
+        // Fade from 1.0 to 0.5
+        currentOpacity = lerpDouble(1.0, 0.5, tileProgress / 0.4)!;
+      } else {
+        // Fade from 0.5 to 0.85
+        currentOpacity = lerpDouble(0.5, 0.85, (tileProgress - 0.4) / 0.6)!;
+      }
+
+      // Start position (composition)
+      final startX = tile.currentPos.dx * normalSize;
+      final startY = tile.currentPos.dy * normalSize;
+
+      // Determine which bookend this tile goes to based on its Y position
+      final isTopHalf = tile.currentPos.dy < gridSize / 2;
+
+      // Calculate evenly-spaced position in bookend
+      int bookendIndex;
+      if (isTopHalf) {
+        // Count how many tiles with lower index are also in top half
+        bookendIndex = tiles.take(index).where((t) => t.currentPos.dy < gridSize / 2).length;
+      } else {
+        // Count how many tiles with lower index are also in bottom half
+        bookendIndex = tiles.take(index).where((t) => t.currentPos.dy >= gridSize / 2).length;
+      }
+
+      // Count total tiles in this bookend
+      final tilesInThisBookend = isTopHalf
+          ? tiles.where((t) => t.currentPos.dy < gridSize / 2).length
+          : tiles.where((t) => t.currentPos.dy >= gridSize / 2).length;
+
+      // End position: evenly spaced across the width
+      final spacing = gridPixelSize / tilesInThisBookend;
+      final endX = bookendIndex * spacing + spacing / 2 - targetSize / 2;
+      final endY = isTopHalf
+          ? gapSize / 2  // Top bookend
+          : gridPixelSize - tinySize + gapSize / 2;  // Bottom bookend
+
+      // Interpolate position and size
+      final currentX = lerpDouble(startX, endX, easedProgress)!;
+      final currentY = lerpDouble(startY, endY, easedProgress)!;
+      final currentSize = lerpDouble(normalSize, targetSize, easedProgress)!;
+
+      return Positioned(
+        left: currentX - 0.5,
+        top: currentY - 0.5,
+        child: Opacity(
+          opacity: currentOpacity,
+          child: Container(
+            width: currentSize + 1,
+            height: currentSize + 1,
+            color: const Color(0xFF1A1A1A),
+          ),
+        ),
+      );
+    }).toList();
+  }
+
+  // Helper: Build tiles exiting more view (grow + drift from bookends to composition)
+  // The tiny tiles BECOME the big tiles - continuous transformation (reverse of entry)
+  List<Widget> _buildExitingTiles(double normalSize, double tinySize, double gridPixelSize, double progress) {
+    final tiles = _tiles.where((tile) =>
+        tile.currentPos.dx >= -0.5 && tile.currentPos.dx < 6.5 &&
+        tile.currentPos.dy >= -0.5 && tile.currentPos.dy < 6.5
+    ).toList();
+
+    if (tiles.isEmpty) return [];
+
+    // Target tile size in bookend (with gaps)
+    final gapSize = tinySize * _tinyTileGap;
+    final startSize = tinySize - gapSize;
+
+    return tiles.asMap().entries.map((entry) {
+      final index = entry.key;
+      final tile = entry.value;
+
+      // Random stagger: 0-100ms = 0-0.147 normalized (with 680ms total)
+      // Use deterministic "random" based on tile id for consistency
+      final stagger = ((tile.id * 41) % 100) / 680.0;
+
+      // Adjust progress for this tile's stagger
+      final tileProgress = ((progress - stagger) / (1.0 - stagger)).clamp(0.0, 1.0);
+
+      // Apply easeOutCubic for size and position
+      final easedProgress = Curves.easeOutCubic.transform(tileProgress);
+
+      // Opacity: 0.85 → 0.5 (at 40%) → 1.0 (reverse of entry dip)
+      double currentOpacity;
+      if (tileProgress < 0.4) {
+        // Fade from 0.85 to 0.5
+        currentOpacity = lerpDouble(0.85, 0.5, tileProgress / 0.4)!;
+      } else {
+        // Fade from 0.5 to 1.0
+        currentOpacity = lerpDouble(0.5, 1.0, (tileProgress - 0.4) / 0.6)!;
+      }
+
+      // Determine which bookend this tile comes from based on its Y position
+      final isTopHalf = tile.currentPos.dy < gridSize / 2;
+
+      // Calculate evenly-spaced starting position in bookend
+      int bookendIndex;
+      if (isTopHalf) {
+        bookendIndex = tiles.take(index).where((t) => t.currentPos.dy < gridSize / 2).length;
+      } else {
+        bookendIndex = tiles.take(index).where((t) => t.currentPos.dy >= gridSize / 2).length;
+      }
+
+      // Count total tiles in this bookend
+      final tilesInThisBookend = isTopHalf
+          ? tiles.where((t) => t.currentPos.dy < gridSize / 2).length
+          : tiles.where((t) => t.currentPos.dy >= gridSize / 2).length;
+
+      // Start position: evenly spaced in bookend
+      final spacing = gridPixelSize / tilesInThisBookend;
+      final startX = bookendIndex * spacing + spacing / 2 - startSize / 2;
+      final startY = isTopHalf
+          ? gapSize / 2  // Top bookend
+          : gridPixelSize - tinySize + gapSize / 2;  // Bottom bookend
+
+      // End position (composition)
+      final endX = tile.currentPos.dx * normalSize;
+      final endY = tile.currentPos.dy * normalSize;
+
+      // Interpolate position and size
+      final currentX = lerpDouble(startX, endX, easedProgress)!;
+      final currentY = lerpDouble(startY, endY, easedProgress)!;
+      final currentSize = lerpDouble(startSize, normalSize, easedProgress)!;
+
+      return Positioned(
+        left: currentX - 0.5,
+        top: currentY - 0.5,
+        child: Opacity(
+          opacity: currentOpacity,
+          child: Container(
+            width: currentSize + 1,
+            height: currentSize + 1,
+            color: const Color(0xFF1A1A1A),
+          ),
+        ),
+      );
+    }).toList();
+  }
+
+  // Helper: Build tiles at their normal positions
+  List<Widget> _buildNormalTiles(double tileSize, {double opacity = 1.0}) {
+    return _tiles.where((tile) =>
+        tile.currentPos.dx >= -0.5 && tile.currentPos.dx < 6.5 &&
+        tile.currentPos.dy >= -0.5 && tile.currentPos.dy < 6.5
+    ).map((tile) {
+      return Positioned(
+        left: tile.currentPos.dx * tileSize - 0.5,
+        top: tile.currentPos.dy * tileSize - 0.5,
+        child: Opacity(
+          opacity: opacity,
+          child: Container(
+            width: tileSize + 1,
+            height: tileSize + 1,
+            color: const Color(0xFF1A1A1A),
+          ),
+        ),
+      );
+    }).toList();
+  }
+
+  // Build bookend tiles at top and bottom - matches the final state of entering animation
+  // Uses actual composition tiles, evenly spaced
+  List<Widget> _buildBookendTiles(double gridPixelSize, double tinyTileSize, double progress, double breathingScale) {
+    final tiles = _tiles.where((tile) =>
+        tile.currentPos.dx >= -0.5 && tile.currentPos.dx < 6.5 &&
+        tile.currentPos.dy >= -0.5 && tile.currentPos.dy < 6.5
+    ).toList();
+
+    if (tiles.isEmpty) return [];
+
+    final gapSize = tinyTileSize * _tinyTileGap;
+    final baseSize = tinyTileSize - gapSize;
+    final actualTileSize = baseSize * breathingScale;
+
+    // Count tiles in each bookend
+    final topTiles = tiles.where((t) => t.currentPos.dy < gridSize / 2).toList();
+    final bottomTiles = tiles.where((t) => t.currentPos.dy >= gridSize / 2).toList();
+
+    final List<Widget> result = [];
+
+    // Top bookend
+    for (int i = 0; i < topTiles.length; i++) {
+      final spacing = gridPixelSize / topTiles.length;
+      final x = i * spacing + spacing / 2 - actualTileSize / 2;
+      final y = gapSize / 2;
+
+      result.add(
+        Positioned(
+          left: x,
+          top: y,
+          child: Opacity(
+            opacity: progress * 0.85,  // Match final opacity from entering animation
             child: Container(
-              width: tileSize + 1,
-              height: tileSize + 1,
+              width: actualTileSize,
+              height: actualTileSize,
               color: const Color(0xFF1A1A1A),
             ),
-          );
-        }),
-      ],
+          ),
+        ),
+      );
+    }
+
+    // Bottom bookend
+    for (int i = 0; i < bottomTiles.length; i++) {
+      final spacing = gridPixelSize / bottomTiles.length;
+      final x = i * spacing + spacing / 2 - actualTileSize / 2;
+      final y = gridPixelSize - tinyTileSize + gapSize / 2;
+
+      result.add(
+        Positioned(
+          left: x,
+          top: y,
+          child: Opacity(
+            opacity: progress * 0.85,  // Match final opacity from entering animation
+            child: Container(
+              width: actualTileSize,
+              height: actualTileSize,
+              color: const Color(0xFF1A1A1A),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return result;
+  }
+
+  // Build the scrollable content for more view (no internal fade - parent handles opacity)
+  Widget _buildMoreContent() {
+    final verse = verses[_currentQuote];
+
+    return GestureDetector(
+      onTap: _exitMoreView,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 24,
+          right: 24,
+          top: 40, // Space for top bookend
+          bottom: 40, // Space for bottom bookend
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Full text (or anchor if no full text)
+              Text(
+                verse.full ?? verse.anchor,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.jost(
+                  fontSize: 18,
+                  height: 1.6,
+                  color: const Color(0xFF2C2C2C),
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // Source
+              Text(
+                verse.source,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.jost(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: const Color(0xFF888888),
+                  letterSpacing: 0.5,
+                ),
+              ),
+
+              // Commentary (if available)
+              if (verse.commentary != null) ...[
+                const SizedBox(height: 32),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F3EE),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    verse.commentary!,
+                    textAlign: TextAlign.left,
+                    style: GoogleFonts.jost(
+                      fontSize: 15,
+                      height: 1.5,
+                      color: const Color(0xFF555555),
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 
   Widget _buildControls() {
+    final hasMore = verses[_currentQuote].hasMore;
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Source/text toggle (left side)
+        // Source and More toggles (left side)
         Padding(
           padding: const EdgeInsets.only(left: 4.0, top: 12.0),
-          child: GestureDetector(
-            onTap: _toggleSource,
-            behavior: HitTestBehavior.opaque,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 10,
-                  height: 10,
-                  color: const Color(0xFFAAAAAA),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Source toggle (filled square)
+              GestureDetector(
+                onTap: _toggleSource,
+                behavior: HitTestBehavior.opaque,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 10,
+                      height: 10,
+                      color: const Color(0xFFAAAAAA),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _showingSource ? 'text' : 'source',
+                      style: GoogleFonts.jost(
+                        fontSize: 12,
+                        color: const Color(0xFFAAAAAA),
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  _showingSource ? 'text' : 'source',
-                  style: GoogleFonts.jost(
-                    fontSize: 12,
-                    color: const Color(0xFFAAAAAA),
-                    letterSpacing: 1.0,
+              ),
+
+              const SizedBox(width: 20),
+
+              // More toggle (outlined square)
+              GestureDetector(
+                onTap: hasMore ? _toggleMoreView : null,
+                behavior: HitTestBehavior.opaque,
+                child: Opacity(
+                  opacity: hasMore ? 1.0 : 0.3,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: const Color(0xFFAAAAAA),
+                            width: 1.5,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _isMoreViewActive ? 'less' : 'more',
+                        style: GoogleFonts.jost(
+                          fontSize: 12,
+                          color: const Color(0xFFAAAAAA),
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
 
