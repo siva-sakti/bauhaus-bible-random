@@ -1,8 +1,12 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'features/attribution.dart';
+import 'features/verse.dart';
 import 'features/onboarding.dart';
+
+// Toggle between test and real verses:
+import 'features/verses_test.dart';   // For testing lengths
+// import 'features/verses_data.dart'; // For real app
 
 void main() {
   runApp(const BibleTilesApp());
@@ -114,8 +118,8 @@ class _TileRevealScreenState extends State<TileRevealScreen>
   
   static const int maxTiles = 30;
   
-  // Using Verse data from features/attribution.dart
-  final List<Verse> verses = defaultVerses;
+  // Verses loaded from features/verses_test.dart or verses_data.dart
+  final List<Verse> verses = testVerses;  // Change to allVerses for real app
   int _currentQuote = 0;
 
   // Attribution state
