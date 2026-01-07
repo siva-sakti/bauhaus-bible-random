@@ -121,6 +121,7 @@ class _TileRevealScreenState extends State<TileRevealScreen>
   // Verses loaded from features/verses_test.dart or verses_data.dart
   final List<Verse> verses = testVerses;  // Change to allVerses for real app
   int _currentQuote = 0;
+  int _nextQuote = 0;  // Stores upcoming verse during transition
 
   // Attribution state
   bool _showingSource = false;
@@ -190,7 +191,12 @@ class _TileRevealScreenState extends State<TileRevealScreen>
   
   // Animate from full grid to first composition (curtains parting)
   void _animateOpeningSequence() {
-    _targetComposition = 0;
+    // Pick random first verse and matching composition
+    _currentQuote = _random.nextInt(verses.length);
+    final verseSize = _getVerseSize(verses[_currentQuote]);
+    final compatible = _getCompatibleCompositions(verseSize);
+    _targetComposition = compatible[_random.nextInt(compatible.length)];
+
     final targetTiles = compositionTiles[_targetComposition];
     
     // Build set of target positions for quick lookup
@@ -595,13 +601,16 @@ class _TileRevealScreenState extends State<TileRevealScreen>
       _tilesStarted = false;
     });
 
+    // Pick next verse and matching composition BEFORE starting fade
+    _pickNextVerseAndComposition();
+
     // Fade out current quote - tiles will start when opacity drops
     _quoteFadeOutController.addListener(_onFadeOutUpdate);
     _quoteFadeOutController.forward(from: 0).then((_) {
       _quoteFadeOutController.removeListener(_onFadeOutUpdate);
       setState(() {
         _showingQuote = false;
-        _currentQuote = (_currentQuote + 1) % verses.length;
+        _currentQuote = _nextQuote;  // NOW switch to new verse
         _quoteOpacity = 0.0;
         _newQuoteFadingIn = true; // NOW we're ready to fade in new quote
       });
@@ -621,8 +630,7 @@ class _TileRevealScreenState extends State<TileRevealScreen>
   }
   
   void _startTileTransition() {
-    _targetComposition = (_currentComposition + 1) % compositionTiles.length;
-    
+    // _targetComposition is already set by _pickNextVerseAndComposition()
     final targetTiles = compositionTiles[_targetComposition];
     
     // Add new tiles if needed (they enter from off-screen)
@@ -714,9 +722,150 @@ class _TileRevealScreenState extends State<TileRevealScreen>
     });
   }
 
+  // === Smart verse/composition matching ===
+
+  // Auto-wrap long text that doesn't have manual line breaks
+  String _autoWrapText(String text, {int charsPerLine = 20}) {
+    // If already has line breaks, leave it alone
+    if (text.contains('\n')) {
+      return text;
+    }
+
+    // If short enough, no wrapping needed
+    if (text.length <= charsPerLine) {
+      return text;
+    }
+
+    // Split into words and rebuild with line breaks
+    final words = text.split(' ');
+    final lines = <String>[];
+    var currentLine = '';
+
+    for (final word in words) {
+      if (currentLine.isEmpty) {
+        currentLine = word;
+      } else if (currentLine.length + 1 + word.length <= charsPerLine) {
+        currentLine += ' $word';
+      } else {
+        lines.add(currentLine);
+        currentLine = word;
+      }
+    }
+    if (currentLine.isNotEmpty) {
+      lines.add(currentLine);
+    }
+
+    return lines.join('\n');
+  }
+
+  // Calculate verse "size" based on line count after auto-wrapping
+  // Returns: 0 = tiny, 1 = small, 2 = medium, 3 = large, 4 = extra large
+  int _getVerseSize(Verse verse) {
+    // Use auto-wrapped text to get accurate line count
+    final wrappedText = _autoWrapText(verse.text);
+    final lineCount = wrappedText.split('\n').length;
+
+    if (lineCount <= 2) return 0;       // tiny
+    if (lineCount <= 3) return 1;       // small
+    if (lineCount <= 5) return 2;       // medium
+    if (lineCount <= 7) return 3;       // large
+    return 4;                           // extra large
+  }
+
+  // Get clearing area for a composition
+  double _getClearingArea(int compositionIndex) {
+    final clearing = _clearings[compositionIndex];
+    return clearing.width * clearing.height;
+  }
+
+  // Find compositions that can fit a verse of given size
+  List<int> _getCompatibleCompositions(int verseSize) {
+    List<int> compatible = [];
+
+    for (int i = 0; i < compositionTiles.length; i++) {
+      final area = _getClearingArea(i);
+
+      // Match verse size to minimum clearing area needed
+      // Areas: small clearing ~6-8, medium ~10-12, large ~16-20
+      bool fits = false;
+      switch (verseSize) {
+        case 0: // tiny - any clearing works
+        case 1: // small - any clearing works
+          fits = true;
+          break;
+        case 2: // medium - need at least 8 area
+          fits = area >= 8;
+          break;
+        case 3: // large - need at least 12 area
+          fits = area >= 12;
+          break;
+        case 4: // extra large - need biggest clearings (16+)
+          fits = area >= 16;
+          break;
+      }
+
+      if (fits) {
+        compatible.add(i);
+      }
+    }
+
+    // If nothing fits (shouldn't happen), return all compositions
+    if (compatible.isEmpty) {
+      return List.generate(compositionTiles.length, (i) => i);
+    }
+
+    return compatible;
+  }
+
+  // Pick a random verse and matching composition
+  void _pickNextVerseAndComposition() {
+    // Pick random verse (different from current)
+    int newVerse;
+    if (verses.length > 1) {
+      do {
+        newVerse = _random.nextInt(verses.length);
+      } while (newVerse == _currentQuote);
+    } else {
+      newVerse = 0;
+    }
+
+    // Get verse size and find compatible compositions
+    final verseSize = _getVerseSize(verses[newVerse]);
+    final compatible = _getCompatibleCompositions(verseSize);
+
+    // Pick random compatible composition (different from current if possible)
+    int newComposition;
+    final compatibleExcludingCurrent = compatible.where((c) => c != _currentComposition).toList();
+    if (compatibleExcludingCurrent.isNotEmpty) {
+      newComposition = compatibleExcludingCurrent[_random.nextInt(compatibleExcludingCurrent.length)];
+    } else {
+      newComposition = compatible[_random.nextInt(compatible.length)];
+    }
+
+    _nextQuote = newVerse;  // Store for later, don't update _currentQuote yet
+    _targetComposition = newComposition;
+  }
+
+  // Get dynamic font size based on verse length
+  double _getFontSize(Verse verse) {
+    final size = _getVerseSize(verse);
+    switch (size) {
+      case 0: return 24;  // tiny
+      case 1: return 22;  // small
+      case 2: return 20;  // medium
+      case 3: return 18;  // large
+      case 4: return 16;  // extra large
+      default: return 20;
+    }
+  }
+
   Widget _buildFlipContent() {
     final angle = _flipController.value * math.pi;
     final isFrontVisible = angle < math.pi / 2;
+
+    // Auto-wrap text that doesn't have manual line breaks
+    final displayText = _autoWrapText(verses[_currentQuote].text);
+    final fontSize = _getFontSize(verses[_currentQuote]);
 
     return Transform(
       alignment: Alignment.center,
@@ -727,10 +876,10 @@ class _TileRevealScreenState extends State<TileRevealScreen>
           ? FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(
-                verses[_currentQuote].text,
+                displayText,
                 textAlign: TextAlign.center,
                 style: GoogleFonts.jost(
-                  fontSize: 22,
+                  fontSize: fontSize,
                   height: 1.5,
                   color: const Color(0xFF2C2C2C),
                   fontWeight: FontWeight.w400,
