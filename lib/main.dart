@@ -1,6 +1,7 @@
-import 'dart:math';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'features/attribution.dart';
 
 void main() {
   runApp(const BibleTilesApp());
@@ -39,7 +40,7 @@ class _TileRevealScreenState extends State<TileRevealScreen>
   double _quoteStartTime = 0.0; // When quote starts fading in (normalized 0-1)
   double _quoteEndTime = 1.0;   // When quote is fully visible
   
-  final Random _random = Random();
+  final math.Random _random = math.Random();
   
   static const int gridSize = 6;
   
@@ -112,32 +113,41 @@ class _TileRevealScreenState extends State<TileRevealScreen>
   
   static const int maxTiles = 30;
   
-  final List<String> quotes = [
-    "Be still,\nand know that\nI am God.",
-    "The light shines\nin the darkness.",
-    "For everything\nthere is a season.",
-    "Love is patient,\nlove is kind.",
-    "Ask, and it will\nbe given to you.",
-  ];
+  // Using Verse data from features/attribution.dart
+  final List<Verse> verses = defaultVerses;
   int _currentQuote = 0;
+
+  // Attribution state
+  bool _showingSource = false;
+  late AnimationController _flipController;
+
+  // Onboarding state
+  bool _showingOnboarding = false;
+  int _onboardingPage = 0;
 
   @override
   void initState() {
     super.initState();
-    
+
     for (var tiles in compositionTiles) {
       _clearings.add(_findLargestClearing(tiles));
     }
-    
+
     _masterController = AnimationController(
       duration: const Duration(milliseconds: 6000), // Longer, more relaxed
       vsync: this,
     );
-    
+
     _quoteFadeOutController = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
     );
+
+    _flipController = AnimationController(
+      duration: const Duration(milliseconds: 350),
+      vsync: this,
+    );
+    _flipController.addListener(() => setState(() {}));
     
     _masterController.addListener(_onAnimationUpdate);
     _masterController.addStatusListener(_onAnimationStatus);
@@ -567,20 +577,26 @@ class _TileRevealScreenState extends State<TileRevealScreen>
   
   void _transitionToNext() {
     if (_isTransitioning) return;
-    
+
+    // Reset source view if showing
+    if (_showingSource) {
+      _showingSource = false;
+      _flipController.reset();
+    }
+
     setState(() {
       _isTransitioning = true;
       _newQuoteFadingIn = false;
       _tilesStarted = false;
     });
-    
+
     // Fade out current quote - tiles will start when opacity drops
     _quoteFadeOutController.addListener(_onFadeOutUpdate);
     _quoteFadeOutController.forward(from: 0).then((_) {
       _quoteFadeOutController.removeListener(_onFadeOutUpdate);
       setState(() {
         _showingQuote = false;
-        _currentQuote = (_currentQuote + 1) % quotes.length;
+        _currentQuote = (_currentQuote + 1) % verses.length;
         _quoteOpacity = 0.0;
         _newQuoteFadingIn = true; // NOW we're ready to fade in new quote
       });
@@ -650,112 +666,302 @@ class _TileRevealScreenState extends State<TileRevealScreen>
   void dispose() {
     _masterController.dispose();
     _quoteFadeOutController.dispose();
+    _flipController.dispose();
     super.dispose();
+  }
+
+  void _toggleSource() {
+    if (_isTransitioning) return;
+
+    setState(() {
+      _showingSource = !_showingSource;
+    });
+
+    if (_showingSource) {
+      _flipController.forward();
+    } else {
+      _flipController.reverse();
+    }
+  }
+
+  void _showOnboarding() {
+    setState(() {
+      _showingOnboarding = true;
+      _onboardingPage = 0;
+    });
+  }
+
+  void _nextOnboardingPage() {
+    setState(() {
+      if (_onboardingPage < 2) {
+        _onboardingPage++;
+      } else {
+        _showingOnboarding = false;
+        _onboardingPage = 0;
+      }
+    });
+  }
+
+  void _dismissOnboarding() {
+    setState(() {
+      _showingOnboarding = false;
+      _onboardingPage = 0;
+    });
+  }
+
+  Widget _buildFlipContent() {
+    final angle = _flipController.value * math.pi;
+    final isFrontVisible = angle < math.pi / 2;
+
+    return Transform(
+      alignment: Alignment.center,
+      transform: Matrix4.identity()
+        ..setEntry(3, 2, 0.001) // perspective
+        ..rotateY(angle),
+      child: isFrontVisible
+          ? FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                verses[_currentQuote].text,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.jost(
+                  fontSize: 22,
+                  height: 1.5,
+                  color: const Color(0xFF2C2C2C),
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            )
+          : Transform(
+              alignment: Alignment.center,
+              transform: Matrix4.identity()..rotateY(math.pi),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: SourceText(
+                  source: verses[_currentQuote].source,
+                ),
+              ),
+            ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    // Old quote fading out: use current composition's clearing
-    // New quote fading in: use target composition's clearing  
-    final clearing = _newQuoteFadingIn 
-        ? _clearings[_targetComposition] 
-        : _clearings[_currentComposition];
-    
     return Scaffold(
-      body: GestureDetector(
-        onTap: _showingQuote && !_isTransitioning ? _transitionToNext : null,
-        behavior: HitTestBehavior.opaque,
-        child: Center(
-          child: AspectRatio(
-            aspectRatio: 1,
+      body: Stack(
+        children: [
+          // Main content
+          GestureDetector(
+            onTap: _showingQuote && !_isTransitioning && !_showingOnboarding
+                ? _transitionToNext
+                : null,
+            behavior: HitTestBehavior.opaque,
+            child: SafeArea(
+              child: Center(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final controlsHeight = 60.0;
+                    final padding = 24.0;
+                    final availableWidth = constraints.maxWidth - (padding * 2);
+                    final availableHeight = constraints.maxHeight - (padding * 2) - controlsHeight;
+                    final squareSize = availableWidth < availableHeight ? availableWidth : availableHeight;
+
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: squareSize,
+                          height: squareSize,
+                          child: _buildGrid(squareSize),
+                        ),
+                        SizedBox(
+                          height: controlsHeight,
+                          width: squareSize,
+                          child: _buildControls(),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+
+          // Onboarding overlay
+          if (_showingOnboarding) _buildOnboardingOverlay(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOnboardingOverlay() {
+    final pages = [
+      {
+        'title': 'welcome',
+        'body': 'a quiet space for\ncontemplation',
+      },
+      {
+        'title': 'navigate',
+        'body': 'tap anywhere for\nthe next verse\n\ntap ■ source to see\nwhere it\'s from',
+      },
+      {
+        'title': 'breathe',
+        'body': 'let each verse\nsettle before\nmoving on',
+      },
+    ];
+
+    final page = pages[_onboardingPage];
+
+    return GestureDetector(
+      onTap: _nextOnboardingPage,
+      child: Container(
+        color: const Color(0xFFFAF8F3).withOpacity(0.95),
+        child: SafeArea(
+          child: Center(
             child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final gridWidth = constraints.maxWidth;
-                  final tileSize = gridWidth / gridSize;
-                  
-                  final clearingLeft = clearing.left * tileSize;
-                  final clearingTop = clearing.top * tileSize;
-                  final clearingWidth = clearing.width * tileSize;
-                  final clearingHeight = clearing.height * tileSize;
-                  
-                  return Stack(
-                    clipBehavior: Clip.hardEdge,
-                    children: [
-                      // Quote layer
-                      if (_showingQuote)
-                        Positioned(
-                          left: clearingLeft,
-                          top: clearingTop,
-                          width: clearingWidth,
-                          height: clearingHeight,
-                          child: Opacity(
-                            opacity: _quoteOpacity,
-                            child: Center(
-                              child: Padding(
-                                padding: const EdgeInsets.all(8.0),
-                                child: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: Text(
-                                    quotes[_currentQuote],
-                                    textAlign: TextAlign.center,
-                                    style: GoogleFonts.jost(
-                                      fontSize: 22,
-                                      height: 1.5,
-                                      color: const Color(0xFF2C2C2C),
-                                      fontWeight: FontWeight.w400,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      
-                      // Tiles layer
-                      ..._tiles.where((t) => 
-                          t.currentPos.dx >= -0.5 && t.currentPos.dx < gridSize + 0.5 &&
-                          t.currentPos.dy >= -0.5 && t.currentPos.dy < gridSize + 0.5
-                      ).map((tile) {
-                        return Positioned(
-                          left: tile.currentPos.dx * tileSize - 0.5,
-                          top: tile.currentPos.dy * tileSize - 0.5,
-                          child: Container(
-                            width: tileSize + 1,
-                            height: tileSize + 1,
-                            color: const Color(0xFF1A1A1A),
-                          ),
-                        );
-                      }),
-                      
-                      // Tap hint
-                      if (_showingQuote && !_isTransitioning && _quoteOpacity > 0.8)
-                        Positioned(
-                          bottom: -40,
-                          left: 0,
-                          right: 0,
-                          child: Opacity(
-                            opacity: (_quoteOpacity - 0.8) * 5, // Fade in during last 20% of quote fade
-                            child: Text(
-                              'tap for another',
-                              textAlign: TextAlign.center,
-                              style: GoogleFonts.jost(
-                                fontSize: 12,
-                                color: const Color(0xFFAAAAAA),
-                                letterSpacing: 1.2,
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  );
-                },
+              padding: const EdgeInsets.all(48.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    page['title']!,
+                    style: GoogleFonts.jost(
+                      fontSize: 14,
+                      color: const Color(0xFFAAAAAA),
+                      letterSpacing: 2.0,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  Text(
+                    page['body']!,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.jost(
+                      fontSize: 20,
+                      height: 1.6,
+                      color: const Color(0xFF2C2C2C),
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                  const SizedBox(height: 48),
+                  Text(
+                    _onboardingPage < 2 ? 'tap to continue' : 'tap to begin',
+                    style: GoogleFonts.jost(
+                      fontSize: 12,
+                      color: const Color(0xFFAAAAAA),
+                      letterSpacing: 1.0,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildGrid(double size) {
+    final clearing = _newQuoteFadingIn
+        ? _clearings[_targetComposition]
+        : _clearings[_currentComposition];
+
+    final tileSize = size / 6; // gridSize is 6
+
+    final clearingLeft = clearing.left * tileSize;
+    final clearingTop = clearing.top * tileSize;
+    final clearingWidth = clearing.width * tileSize;
+    final clearingHeight = clearing.height * tileSize;
+
+    return Stack(
+      clipBehavior: Clip.hardEdge,
+      children: [
+        // Quote/Source layer with 3D flip
+        if (_showingQuote)
+          Positioned(
+            left: clearingLeft,
+            top: clearingTop,
+            width: clearingWidth,
+            height: clearingHeight,
+            child: Opacity(
+              opacity: _quoteOpacity,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: _buildFlipContent(),
+                ),
+              ),
+            ),
+          ),
+
+        // Tiles layer
+        ..._tiles.where((t) =>
+            t.currentPos.dx >= -0.5 && t.currentPos.dx < 6.5 &&
+            t.currentPos.dy >= -0.5 && t.currentPos.dy < 6.5
+        ).map((tile) {
+          return Positioned(
+            left: tile.currentPos.dx * tileSize - 0.5,
+            top: tile.currentPos.dy * tileSize - 0.5,
+            child: Container(
+              width: tileSize + 1,
+              height: tileSize + 1,
+              color: const Color(0xFF1A1A1A),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _buildControls() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Source/text toggle (left side)
+        Padding(
+          padding: const EdgeInsets.only(left: 4.0, top: 12.0),
+          child: GestureDetector(
+            onTap: _toggleSource,
+            behavior: HitTestBehavior.opaque,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 10,
+                  height: 10,
+                  color: const Color(0xFFAAAAAA),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _showingSource ? 'text' : 'source',
+                  style: GoogleFonts.jost(
+                    fontSize: 12,
+                    color: const Color(0xFFAAAAAA),
+                    letterSpacing: 1.0,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Info icon (right side)
+        Padding(
+          padding: const EdgeInsets.only(right: 4.0, top: 10.0),
+          child: GestureDetector(
+            onTap: _showOnboarding,
+            behavior: HitTestBehavior.opaque,
+            child: Text(
+              'i',
+              style: GoogleFonts.jost(
+                fontSize: 16,
+                color: const Color(0xFFAAAAAA),
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
