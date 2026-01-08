@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'features/verse.dart';
 import 'features/onboarding.dart';
+import 'features/compositions_test.dart';
 
 // Toggle between test and real verses:
 import 'features/verses_test.dart';   // For testing lengths
@@ -48,76 +49,93 @@ class _TileRevealScreenState extends State<TileRevealScreen>
   
   final math.Random _random = math.Random();
   
-  static const int gridSize = 6;
-  
-  // Compositions defined only by tile positions
+  static const int gridSize = 10;
+
+  // TEST MODE: Use compositions from test file
+  final List<List<List<int>>> compositionTiles = testCompositions;
+
+  // ORIGINAL COMPOSITIONS (commented out for testing)
+  /*
   final List<List<List<int>>> compositionTiles = [
-    // Heavy top-right corner
+    // Diagonal cascade — dense top-right
     [
-      [0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5],
-      [1, 2], [1, 3], [1, 4], [1, 5],
-      [2, 3], [2, 4], [2, 5],
-      [3, 4], [3, 5],
-      [4, 5],
-      [5, 5],
+      // Full top rows
+      [0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6], [0, 7], [0, 8], [0, 9],
+      [1, 0], [1, 1], [1, 2], [1, 3], [1, 4], [1, 5], [1, 6], [1, 7], [1, 8], [1, 9],
+      // Stepping down densely
+      [2, 3], [2, 4], [2, 5], [2, 6], [2, 7], [2, 8], [2, 9],
+      [3, 4], [3, 5], [3, 6], [3, 7], [3, 8], [3, 9],
+      [4, 5], [4, 6], [4, 7], [4, 8], [4, 9],
+      [5, 6], [5, 7], [5, 8], [5, 9],
+      [6, 7], [6, 8], [6, 9],
+      [7, 8], [7, 9],
+      [8, 9],
     ],
-    
-    // Heavy right side with step pattern
+
+    // Bottom-heavy — sand settled at bottom
     [
-      [0, 4], [0, 5],
-      [1, 3], [1, 4], [1, 5],
-      [2, 2], [2, 3], [2, 4], [2, 5],
-      [3, 2], [3, 3], [3, 4], [3, 5],
-      [4, 1], [4, 2], [4, 3], [4, 4], [4, 5],
-      [5, 1], [5, 2], [5, 3], [5, 4], [5, 5],
+      // Scattered top particles
+      [0, 1], [0, 5], [0, 8],
+      [1, 0], [1, 3], [1, 6], [1, 9],
+      [2, 2], [2, 4], [2, 7],
+      // Dense middle-bottom
+      [5, 0], [5, 1], [5, 8], [5, 9],
+      [6, 0], [6, 1], [6, 2], [6, 7], [6, 8], [6, 9],
+      [7, 0], [7, 1], [7, 2], [7, 3], [7, 6], [7, 7], [7, 8], [7, 9],
+      [8, 0], [8, 1], [8, 2], [8, 3], [8, 4], [8, 5], [8, 6], [8, 7], [8, 8], [8, 9],
+      [9, 0], [9, 1], [9, 2], [9, 3], [9, 4], [9, 5], [9, 6], [9, 7], [9, 8], [9, 9],
     ],
-    
-    // Bottom-heavy
+
+    // Thick frame — double border
     [
-      [2, 0], [2, 5],
-      [3, 0], [3, 1], [3, 4], [3, 5],
-      [4, 0], [4, 1], [4, 2], [4, 3], [4, 4], [4, 5],
-      [5, 0], [5, 1], [5, 2], [5, 3], [5, 4], [5, 5],
+      // Top two rows
+      [0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6], [0, 7], [0, 8], [0, 9],
+      [1, 0], [1, 1], [1, 2], [1, 3], [1, 4], [1, 5], [1, 6], [1, 7], [1, 8], [1, 9],
+      // Thick sides
+      [2, 0], [2, 1], [2, 8], [2, 9],
+      [3, 0], [3, 1], [3, 8], [3, 9],
+      [4, 0], [4, 1], [4, 8], [4, 9],
+      [5, 0], [5, 1], [5, 8], [5, 9],
+      [6, 0], [6, 1], [6, 8], [6, 9],
+      [7, 0], [7, 1], [7, 8], [7, 9],
+      // Bottom two rows
+      [8, 0], [8, 1], [8, 2], [8, 3], [8, 4], [8, 5], [8, 6], [8, 7], [8, 8], [8, 9],
+      [9, 0], [9, 1], [9, 2], [9, 3], [9, 4], [9, 5], [9, 6], [9, 7], [9, 8], [9, 9],
     ],
-    
-    // Frame - thin border
+
+    // Corner masses — solid rectangular blocks
     [
-      [0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5],
-      [1, 0], [1, 5],
-      [2, 0], [2, 5],
-      [3, 0], [3, 5],
-      [4, 0], [4, 5],
-      [5, 0], [5, 1], [5, 2], [5, 3], [5, 4], [5, 5],
-    ],
-    
-    // Left-heavy diagonal
-    [
-      [0, 0], [0, 1], [0, 2],
+      // Top-left block (5x4)
+      [0, 0], [0, 1], [0, 2], [0, 3],
       [1, 0], [1, 1], [1, 2], [1, 3],
       [2, 0], [2, 1], [2, 2], [2, 3],
-      [3, 0], [3, 1], [3, 2],
-      [4, 0], [4, 1],
-      [5, 0], [5, 1],
-    ],
-    
-    // Top-left and bottom-right blocks
-    [
-      [0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2], [2, 0], [2, 1],
-      [4, 4], [4, 5], [5, 3], [5, 4], [5, 5], [3, 5],
+      [3, 0], [3, 1], [3, 2], [3, 3],
+      [4, 0], [4, 1], [4, 2], [4, 3],
+      // Bottom-right block (5x4)
+      [5, 6], [5, 7], [5, 8], [5, 9],
+      [6, 6], [6, 7], [6, 8], [6, 9],
+      [7, 6], [7, 7], [7, 8], [7, 9],
+      [8, 6], [8, 7], [8, 8], [8, 9],
+      [9, 6], [9, 7], [9, 8], [9, 9],
     ],
   ];
-  
+  */
+
   List<Rect> _clearings = [];
-  
-  int _currentComposition = 0;
-  int _targetComposition = 1;
+
+  // SEQUENTIAL TEST MODE: Cycle through all compositions in order (ignores verse matching)
+  static const bool _sequentialTestMode = false;  // OFF for normal use
+  static const int _testStartIndex = 0;  // Set to 0 for all, or 26 to start at new batch (#32+)
+
+  int _currentComposition = _testStartIndex > 0 ? _testStartIndex - 1 : 0;  // Start before test range
+  int _targetComposition = _testStartIndex > 0 ? _testStartIndex : 1;
   bool _showingQuote = false;
   bool _isTransitioning = false;
   bool _newQuoteFadingIn = false; // Track when fading IN the new quote
   
   List<TileState> _tiles = [];
   
-  static const int maxTiles = 30;
+  static const int maxTiles = 70;  // More tiles for 10x10 grid (thick frames need ~64)
   
   // Verses loaded from features/verses_test.dart or verses_data.dart
   final List<Verse> verses = testVerses;  // Change to allVerses for real app
@@ -147,6 +165,10 @@ class _TileRevealScreenState extends State<TileRevealScreen>
     for (var tiles in compositionTiles) {
       _clearings.add(_findLargestClearing(tiles));
     }
+
+    // Manual clearing overrides for better text centering
+    // These compositions have asymmetric white space where auto-detection doesn't center well
+    _applyManualClearingOverrides();
 
     _masterController = AnimationController(
       duration: const Duration(milliseconds: 6000), // Longer, more relaxed
@@ -368,7 +390,40 @@ class _TileRevealScreenState extends State<TileRevealScreen>
     
     return bestClearing;
   }
-  
+
+  // Manual clearing overrides for compositions where auto-detection doesn't center text well
+  void _applyManualClearingOverrides() {
+    // Note: Array indices shift because some compositions are commented out
+
+    // #4 (Top-left block 5x5) → index 4
+    // Block at rows 0-4, cols 0-4. Text should be in bottom-right area.
+    if (_clearings.length > 4) {
+      _clearings[4] = const Rect.fromLTWH(5, 5, 5, 5);  // Bottom-right quadrant
+    }
+
+    // #5 (Bottom-right block 5x5) → index 5
+    // Block at rows 5-9, cols 5-9. Text should be in top-left area.
+    if (_clearings.length > 5) {
+      _clearings[5] = const Rect.fromLTWH(0, 0, 5, 5);  // Top-left quadrant
+    }
+
+    // #6 (Top-right block 5x5) → index 6
+    // Block at rows 0-4, cols 5-9. Text should be in bottom-left area.
+    if (_clearings.length > 6) {
+      _clearings[6] = const Rect.fromLTWH(0, 5, 5, 5);  // Bottom-left quadrant
+    }
+
+    // #12 (Diagonal corners TL+BR) → index 11: center text between the two blocks
+    if (_clearings.length > 11) {
+      _clearings[11] = const Rect.fromLTWH(2, 2, 6, 6);  // Centers at (5, 5) - true center
+    }
+
+    // #13 (Diagonal corners TR+BL) → index 12: center text between the two blocks
+    if (_clearings.length > 12) {
+      _clearings[12] = const Rect.fromLTWH(2, 2, 6, 6);  // Centers at (5, 5) - true center
+    }
+  }
+
   // Key function: calculate paths with chain reactions
   void _calculateChainReactionPaths(List<List<int>> targetPositions) {
     // Build a map of current positions
@@ -462,8 +517,8 @@ class _TileRevealScreenState extends State<TileRevealScreen>
     
     // Assign delays based on chain depth
     // Tiles with depth 0 move first, depth 1 waits for them, etc.
-    double delayPerDepth = 0.10; // Each chain level adds this much delay
-    double baseMoveDuration = 0.50; // How long each tile takes to move (longer = gentler)
+    double delayPerDepth = 0.06; // Each chain level adds this much delay (faster for more tiles)
+    double baseMoveDuration = 0.40; // How long each tile takes to move (snappier for fine grid)
     
     for (int i = 0; i < _tiles.length; i++) {
       int depth = chainDepth[i] ?? 0;
@@ -820,7 +875,7 @@ class _TileRevealScreenState extends State<TileRevealScreen>
   // === Tiny tile helpers for "more" view ===
 
   // Configuration for tiny tiles (bookends at top and bottom)
-  static const int _tinyGridSize = 16;  // More tiles = smaller with gaps
+  static const int _tinyGridSize = 20;  // Finer bookends for 10x10 grid
   static const double _tinyTileGap = 0.4; // Gap between tiny tiles (0-1, portion of tile size)
 
   // === Smart verse/composition matching ===
@@ -879,6 +934,38 @@ class _TileRevealScreenState extends State<TileRevealScreen>
     return clearing.width * clearing.height;
   }
 
+  // Calculate movement score between two compositions
+  // Higher score = more tile movement (more visual interest)
+  double _getMovementScore(int fromIndex, int toIndex) {
+    final fromTiles = compositionTiles[fromIndex];
+    final toTiles = compositionTiles[toIndex];
+
+    // Create sets of positions for quick lookup
+    final fromPositions = fromTiles.map((t) => '${t[0]},${t[1]}').toSet();
+    final toPositions = toTiles.map((t) => '${t[0]},${t[1]}').toSet();
+
+    // Count tiles that need to move (not in same position)
+    final stationaryTiles = fromPositions.intersection(toPositions).length;
+    final movingTiles = fromTiles.length + toTiles.length - (2 * stationaryTiles);
+
+    // Calculate average distance tiles must travel
+    double totalDistance = 0;
+    for (final fromTile in fromTiles) {
+      if (!toPositions.contains('${fromTile[0]},${fromTile[1]}')) {
+        // Find nearest destination position
+        double minDist = double.infinity;
+        for (final toTile in toTiles) {
+          final dist = (fromTile[0] - toTile[0]).abs() + (fromTile[1] - toTile[1]).abs();
+          if (dist < minDist) minDist = dist.toDouble();
+        }
+        totalDistance += minDist;
+      }
+    }
+
+    // Score combines: tiles that move + average distance
+    return movingTiles + totalDistance;
+  }
+
   // Find compositions that can fit a verse of given size
   List<int> _getCompatibleCompositions(int verseSize) {
     List<int> compatible = [];
@@ -887,21 +974,21 @@ class _TileRevealScreenState extends State<TileRevealScreen>
       final area = _getClearingArea(i);
 
       // Match verse size to minimum clearing area needed
-      // Areas: small clearing ~6-8, medium ~10-12, large ~16-20
+      // For 10x10 grid (100 total area), scale thresholds proportionally
       bool fits = false;
       switch (verseSize) {
         case 0: // tiny - any clearing works
         case 1: // small - any clearing works
           fits = true;
           break;
-        case 2: // medium - need at least 8 area
-          fits = area >= 8;
+        case 2: // medium - need at least ~20% of grid
+          fits = area >= 20;
           break;
-        case 3: // large - need at least 12 area
-          fits = area >= 12;
+        case 3: // large - need at least ~30% of grid
+          fits = area >= 30;
           break;
-        case 4: // extra large - need biggest clearings (16+)
-          fits = area >= 16;
+        case 4: // extra large - need biggest clearings (~40%+)
+          fits = area >= 40;
           break;
       }
 
@@ -920,6 +1007,30 @@ class _TileRevealScreenState extends State<TileRevealScreen>
 
   // Pick a random verse and matching composition
   void _pickNextVerseAndComposition() {
+    // SEQUENTIAL TEST MODE: Cycle through compositions in order (from _testStartIndex)
+    if (_sequentialTestMode) {
+      // Next composition in sequence (wraps to start index, not 0)
+      int newComposition = _currentComposition + 1;
+      if (newComposition >= compositionTiles.length) {
+        newComposition = _testStartIndex;  // Wrap back to start of test range
+      }
+
+      // Pick random verse (different from current) - verse matching disabled in test mode
+      int newVerse;
+      if (verses.length > 1) {
+        do {
+          newVerse = _random.nextInt(verses.length);
+        } while (newVerse == _currentQuote);
+      } else {
+        newVerse = 0;
+      }
+
+      _nextQuote = newVerse;
+      _targetComposition = newComposition;
+      return;
+    }
+
+    // NORMAL MODE: Prefer high-movement compositions with verse-size matching
     // Pick random verse (different from current)
     int newVerse;
     if (verses.length > 1) {
@@ -934,20 +1045,30 @@ class _TileRevealScreenState extends State<TileRevealScreen>
     final verseSize = _getVerseSize(verses[newVerse]);
     final compatible = _getCompatibleCompositions(verseSize);
 
-    // Pick random compatible composition (different from current AND target)
-    int newComposition;
+    // Exclude recently used compositions
     final excludeList = {_currentComposition, _targetComposition};
-    final compatibleExcludingRecent = compatible.where((c) => !excludeList.contains(c)).toList();
-    if (compatibleExcludingRecent.isNotEmpty) {
-      newComposition = compatibleExcludingRecent[_random.nextInt(compatibleExcludingRecent.length)];
-    } else if (compatible.length > 1) {
-      // At least pick different from current
-      final fallback = compatible.where((c) => c != _currentComposition).toList();
-      newComposition = fallback.isNotEmpty
-          ? fallback[_random.nextInt(fallback.length)]
+    final candidates = compatible.where((c) => !excludeList.contains(c)).toList();
+
+    int newComposition;
+    if (candidates.length <= 1) {
+      // Not enough candidates, just pick what we can
+      newComposition = candidates.isNotEmpty
+          ? candidates[0]
           : compatible[_random.nextInt(compatible.length)];
     } else {
-      newComposition = compatible[_random.nextInt(compatible.length)];
+      // Score each candidate by movement from current composition
+      final scored = <MapEntry<int, double>>[];
+      for (final c in candidates) {
+        scored.add(MapEntry(c, _getMovementScore(_currentComposition, c)));
+      }
+
+      // Sort by score descending (highest movement first)
+      scored.sort((a, b) => b.value.compareTo(a.value));
+
+      // Pick randomly from top third (ensures variety while favoring movement)
+      final topCount = (scored.length / 3).ceil().clamp(1, scored.length);
+      final topMovers = scored.take(topCount).map((e) => e.key).toList();
+      newComposition = topMovers[_random.nextInt(topMovers.length)];
     }
 
     _nextQuote = newVerse;  // Store for later, don't update _currentQuote yet
@@ -1113,11 +1234,9 @@ class _TileRevealScreenState extends State<TileRevealScreen>
     // Phase 2 (0.33-0.83): Tiles drift to bookend positions
     // Phase 3 (0.67-1.0): Full text fades in
     if (isEntering) {
-      // Phase 1: Anchor fade out (0 - 0.4)
-      final anchorOpacity = (1 - (moreProgress / 0.4)).clamp(0.0, 1.0);
-
-      // Phase 3: More content fade in (0.67 - 1.0)
-      final contentOpacity = ((moreProgress - 0.67) / 0.33).clamp(0.0, 1.0);
+      // Anchor fade out (0 - 0.5) and content fade in (0.3 - 0.8) — overlapping
+      final anchorOpacity = (1 - (moreProgress / 0.5)).clamp(0.0, 1.0);
+      final contentOpacity = ((moreProgress - 0.3) / 0.5).clamp(0.0, 1.0);
 
       return Stack(
         clipBehavior: Clip.hardEdge,
@@ -1173,11 +1292,9 @@ class _TileRevealScreenState extends State<TileRevealScreen>
       // moreProgress goes from 1.0 -> 0.0 during exit
       final exitProgress = 1 - moreProgress; // 0.0 -> 1.0
 
-      // Phase 1: More content fade out (0 - 0.3)
-      final contentOpacity = (1 - (exitProgress / 0.3)).clamp(0.0, 1.0);
-
-      // Phase 3: Anchor fade in (0.75 - 1.0)
-      final anchorOpacity = ((exitProgress - 0.75) / 0.25).clamp(0.0, 1.0);
+      // Content fade out (0 - 0.5) and anchor fade in (0.3 - 0.8) — overlapping
+      final contentOpacity = (1 - (exitProgress / 0.5)).clamp(0.0, 1.0);
+      final anchorOpacity = ((exitProgress - 0.3) / 0.5).clamp(0.0, 1.0);
 
       return Stack(
         clipBehavior: Clip.hardEdge,
@@ -1221,8 +1338,8 @@ class _TileRevealScreenState extends State<TileRevealScreen>
   // The big tiles BECOME the tiny tiles - continuous transformation
   List<Widget> _buildEnteringTiles(double normalSize, double tinySize, double gridPixelSize, double progress) {
     final tiles = _tiles.where((tile) =>
-        tile.currentPos.dx >= -0.5 && tile.currentPos.dx < 6.5 &&
-        tile.currentPos.dy >= -0.5 && tile.currentPos.dy < 6.5
+        tile.currentPos.dx >= -0.5 && tile.currentPos.dx < gridSize + 0.5 &&
+        tile.currentPos.dy >= -0.5 && tile.currentPos.dy < gridSize + 0.5
     ).toList();
 
     if (tiles.isEmpty) return [];
@@ -1308,8 +1425,8 @@ class _TileRevealScreenState extends State<TileRevealScreen>
   // The tiny tiles BECOME the big tiles - continuous transformation (reverse of entry)
   List<Widget> _buildExitingTiles(double normalSize, double tinySize, double gridPixelSize, double progress) {
     final tiles = _tiles.where((tile) =>
-        tile.currentPos.dx >= -0.5 && tile.currentPos.dx < 6.5 &&
-        tile.currentPos.dy >= -0.5 && tile.currentPos.dy < 6.5
+        tile.currentPos.dx >= -0.5 && tile.currentPos.dx < gridSize + 0.5 &&
+        tile.currentPos.dy >= -0.5 && tile.currentPos.dy < gridSize + 0.5
     ).toList();
 
     if (tiles.isEmpty) return [];
@@ -1392,8 +1509,8 @@ class _TileRevealScreenState extends State<TileRevealScreen>
   // Helper: Build tiles at their normal positions
   List<Widget> _buildNormalTiles(double tileSize, {double opacity = 1.0}) {
     return _tiles.where((tile) =>
-        tile.currentPos.dx >= -0.5 && tile.currentPos.dx < 6.5 &&
-        tile.currentPos.dy >= -0.5 && tile.currentPos.dy < 6.5
+        tile.currentPos.dx >= -0.5 && tile.currentPos.dx < gridSize + 0.5 &&
+        tile.currentPos.dy >= -0.5 && tile.currentPos.dy < gridSize + 0.5
     ).map((tile) {
       return Positioned(
         left: tile.currentPos.dx * tileSize - 0.5,
@@ -1414,8 +1531,8 @@ class _TileRevealScreenState extends State<TileRevealScreen>
   // Uses actual composition tiles, evenly spaced
   List<Widget> _buildBookendTiles(double gridPixelSize, double tinyTileSize, double progress, double breathingScale) {
     final tiles = _tiles.where((tile) =>
-        tile.currentPos.dx >= -0.5 && tile.currentPos.dx < 6.5 &&
-        tile.currentPos.dy >= -0.5 && tile.currentPos.dy < 6.5
+        tile.currentPos.dx >= -0.5 && tile.currentPos.dx < gridSize + 0.5 &&
+        tile.currentPos.dy >= -0.5 && tile.currentPos.dy < gridSize + 0.5
     ).toList();
 
     if (tiles.isEmpty) return [];
@@ -1625,21 +1742,37 @@ class _TileRevealScreenState extends State<TileRevealScreen>
           ),
         ),
 
-        // Info icon (right side)
-        Padding(
-          padding: const EdgeInsets.only(right: 4.0, top: 10.0),
-          child: GestureDetector(
-            onTap: _showOnboarding,
-            behavior: HitTestBehavior.opaque,
-            child: Text(
-              'i',
+        // Composition number (center) + Info icon (right)
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Composition number for testing
+            Text(
+              '#$_currentComposition',
               style: GoogleFonts.jost(
-                fontSize: 16,
+                fontSize: 12,
                 color: const Color(0xFFAAAAAA),
-                fontStyle: FontStyle.italic,
+                letterSpacing: 1.0,
               ),
             ),
-          ),
+            const SizedBox(width: 16),
+            // Info icon
+            Padding(
+              padding: const EdgeInsets.only(right: 4.0, top: 0.0),
+              child: GestureDetector(
+                onTap: _showOnboarding,
+                behavior: HitTestBehavior.opaque,
+                child: Text(
+                  'i',
+                  style: GoogleFonts.jost(
+                    fontSize: 16,
+                    color: const Color(0xFFAAAAAA),
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
