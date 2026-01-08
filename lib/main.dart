@@ -171,25 +171,24 @@ class _TileRevealScreenState extends State<TileRevealScreen>
     _applyManualClearingOverrides();
 
     _masterController = AnimationController(
-      duration: const Duration(milliseconds: 6000), // Longer, more relaxed
+      duration: const Duration(milliseconds: 8000), // Slower, more contemplative
       vsync: this,
     );
 
     _quoteFadeOutController = AnimationController(
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 1000),
       vsync: this,
     );
 
     _flipController = AnimationController(
-      duration: const Duration(milliseconds: 350),
+      duration: const Duration(milliseconds: 450),
       vsync: this,
     );
     _flipController.addListener(() => setState(() {}));
 
     // More view animation controllers
-    // 680ms = 600ms base + 80ms max stagger, so all tiles complete together
     _moreTransitionController = AnimationController(
-      duration: const Duration(milliseconds: 680),
+      duration: const Duration(milliseconds: 900), // Slower detail page transition
       vsync: this,
     );
     _moreTransitionController.addListener(() => setState(() {}));
